@@ -1,0 +1,508 @@
+WAIT_FOR_ENTER MACRO
+LOCAL press_enter
+;*****************************************************************
+;draws a message box to the screen and waits for the user to press ENTER
+;if the user presses ESC, the game will end without any message                                                             
+;*****************************************************************
+	PRINT_CORNER mess8,len_mess8,mess9,len_mess9,mess10,len_mess10,mess2,len_mess2,mess6,len_mess6
+	MOV AH, 08H 								;DOS interrupt for reading(into AH) without echo
+	press_enter:
+			INT 21H	
+			CMP AL,	27       					;27 is ascii code for ESC
+			JE GAME_LEAVE		
+			CMP AL,13  							;13 is ascii code for ENTER
+	JNE press_enter
+ENDM
+
+
+
+
+
+PRINT_CORNER MACRO mess1,len1,mess2,len2,mess3,len3,mess4,len4,mess5,len5
+LOCAL CORNER2
+;*****************************************************************
+;draws 5 messages in a box(height=5, width=52)                                                            
+;mess1,mess2,mess3,mess4,mess5 - messages to draw under each other                                                          
+;len1,len2,len3,len4,len5 - the half lengths of these messages                                                             
+;*****************************************************************
+
+	print_row 52
+    print_newline
+
+    print_message_center 25,mess1,len1
+    print_message_center 25,mess2,len2
+	print_message_center 25,mess3,len3
+	print_message_center 25,mess4,len4
+	print_message_center 25,mess5,len5
+
+   
+    print_row 52
+    print_newline
+
+ENDM
+
+
+
+
+
+print_message_center MACRO half_column_number,MESSAGE,HALF_LEN  
+LOCAL first_half,second_half
+;*****************************************************************
+;prints a message to the center of a row   
+;half_column_number - (width of the row)/2
+;HALF_LEN - the half length of the message                                                  
+;*****************************************************************
+    MOV AH,02H                        ;dos function for writing
+    MOV DL,219                        ;put one character with ascii code 219 
+    INT 21H                           ;at the start of the row
+
+	
+	MOV DL,32
+	mov bl, half_column_number	     ;depending on the length of the string,
+    sub bl,HALF_LEN    				 ;less spaces need to be drawn
+ 
+	mov cx,0
+	mov cl,bl
+	mov dl,32
+	first_half:                      ;spaces before the string
+	int 21h
+	loop first_half
+	
+	LEA DX, MESSAGE					 ;print out the message
+	MOV AH, 09H						;write message to output
+	INT 21H
+	
+	MOV AH,02H  
+	mov dl,32
+	mov cl,bl
+	second_half: 					 ;spaces after the string
+	int 21h
+	loop second_half
+	
+
+	mov dl,219                       ;print a character with ascii code 219 to the
+	int 21h							 ;end of the line				
+	print_newline
+ ENDM
+
+
+ 
+ 
+ 
+print_row MACRO column_number
+LOCAL CORNER1
+;*****************************************************************
+;prints a row full of characters with ascii code 219    
+;column_number - width of the row                                         
+;*****************************************************************
+	 mov ah,02h                              ;dos function for writing
+	 MOV CX,column_number                        
+	 MOV DL,219
+	 CORNER1:                            
+	 INT 21H
+	 LOOP CORNER1
+ENDM
+
+
+
+
+
+
+print_newline MACRO 
+;*****************************************************************
+;prints a newline character                                      
+;*****************************************************************                    
+   mov DL,10
+   mov ah,02H   
+   INT 21H
+ENDM
+
+
+
+
+
+PRINT_GAME MACRO a,level_width,level_height
+LOCAL loop1,not_new_line,not_wall,not_empty,not_player,l1
+;*****************************************************************
+;prints out the maze                                   
+;*****************************************************************
+												;print the time digit by digit
+	mov ah,09H
+	LEA DX,mess7
+	INT 21H										
+	
+	mov cx,6									;print the time in reverse order as an array
+	mov SI,5
+	l1:
+	PRINT_NUM TIME[SI]
+	DEC SI
+	loop l1
+	
+	
+    print_newline 
+												;initializations
+	mov index_row, 0
+	mov CL,level_height							;we store in CL the height of the maze
+	mov SI,0
+	mov index, 0							    ;index - the cursor's x position	
+	MOV AH, 02H									;DOS function to print out char to screen
+	;AH won't be changed later
+
+ 
+	loop1:										;prints the matrix
+	mov DL,a[SI]
+	mov AL,level_width
+	CMP index, AL
+	jl not_new_line
+	INC index_row
+	mov index,-1								;we do not count this step
+	mov DL,10 									;10 decimal is newline in ASCII
+	DEC SI										;we must decrement SI, otherwise it will jump above a value in the array
+	not_new_line:
+	CMP DL,1									;if it is wall
+	jne not_wall
+	mov DL,219
+	not_wall:
+	CMP DL,0									;if it is an empty cell
+	jne not_empty
+	mov DL,32
+	not_empty:
+	CMP DL,9									;if it is the player
+	jne not_player
+	mov DL,64
+	not_player: 
+	INT 21H
+	INC SI
+	INC index
+	CMP index_row, CL  							;if we finish with the last row, end the macro
+	JNE loop1
+	
+	INTIRP  50
+	CALCULATE_TIME
+ENDM
+
+
+MOVE_PLAYER MACRO a,level_width_dw,level_width,level_height_dw,player_x,player_y
+LOCAL NEXT1,NEXT2,NEXT3,NEXT4,CONTINUE1,CONTINUE2,CONTINUE3,CONTINUE4
+;*****************************************************************
+;waiting for user input -> moving the player
+;ASCII: 'a'- 61H , 'd' - 64H , 'w' - 77H , 's' - 73H                                 
+;*****************************************************************
+	mov AH,0								;calculate current index
+	mov AL,player_y
+	MUL level_width
+	ADD AL,player_x
+	mov SI, AX
+	
+	
+	mov ah, 0bh								;DOS function for user input(without interrupting program flow)
+	int 21h      							;RETURNS AL=0 -> NO KEY PRESSED, AL!=0 -> KEY PRESSED.
+	cmp al, 0
+	je  NEXT4
+											;PROCESS KEY.        
+	mov ah, 0
+	int 16h 
+	
+	CMP AL, 27								;if ESC was pressed
+	JE GAME_LEAVE							;leave game
+	
+	CMP AL, 64H 							;check if 'd' was pressed ->right
+	JNE NEXT1
+	mov BP,SI
+	INC BP									;in BP the next cell is stored from right
+	CMP a[BP],2								;maze finished
+	JNE CONTINUE1
+	mov game_won,1
+	CONTINUE1:
+	CMP a[BP],0								;if empty
+	JNE NEXT4									
+	mov a[SI],0 							;then move player
+	INC SI
+	mov a[SI],9
+	INC player_x
+	
+	NEXT1:
+	CMP AL, 61H 							;check if 'a' was pressed -> left 
+	JNE NEXT2
+	mov BP,SI								;in BP the previous cell is stored from left
+	DEC BP
+	CMP a[BP],2								;maze finished
+	JNE CONTINUE2
+	mov game_won,1		
+	CONTINUE2:
+	CMP a[BP],0								;if empty
+	JNE NEXT4
+	mov a[SI],0								;then move player
+	DEC SI
+	mov a[SI],9
+	DEC player_x
+
+	NEXT2:	
+	CMP AL, 73H 							;check if 's' was pressed -> down
+	JNE NEXT3
+	mov BP,SI								;in BP the next cell is stored from down
+	ADD BP,level_width_dw
+	CMP a[BP],2								;maze finished
+	JNE CONTINUE3
+	mov game_won,1
+	CONTINUE3:
+	CMP a[BP],0								;if empty
+	JNE NEXT4
+	mov a[SI],0								;then move player
+	ADD SI,level_width_dw
+	mov a[SI],9
+	INC player_Y
+	
+	NEXT3:
+	CMP AL, 77H 							;check if 'w' was pressed -> up
+	JNE NEXT4
+	;up move
+	mov BP,SI
+	SUB BP,level_width_dw 					;in BP the previous cell is stored from up
+	CMP a[BP],2								;maze finished
+	JNE CONTINUE4
+	mov game_won,1
+	CONTINUE4:
+	CMP a[BP],0								;if empty
+	JNE NEXT4
+	mov a[SI],0								;then move player
+	SUB SI,level_width_dw
+	mov a[SI],9
+	DEC player_Y
+	NEXT4:		
+ENDM
+
+
+CLEAR_SCREEN MACRO 
+LOCAL loop2
+;*****************************************************************
+;clears the screen by writing 2000 spaces                                 
+;*****************************************************************
+	MOV AH, 02H								;BIOS function for setting cursor position(INT 10H) and for printing char(int 21h)
+	MOV DX, 0000H							;sets the cursor to (0,0)
+	MOV CX, 2000						    ;write 2000 spaces
+	INT 10H 								;
+	MOV AL,32 								;ACII code of space
+	loop2:
+	INT 21H
+	loop loop2
+	MOV DX, 0000H 							;sets the cursor back to (0,0)
+	INT 10H 
+	
+ENDM
+
+
+
+INTIRP MACRO TIME
+LOCAL P1, P2 
+;*****************************************************************
+;delay function
+;delays so much time that takes to iterate TIMES*65280 times                             
+;*****************************************************************
+	PUSH DX 							;saves dx and cx registers
+	PUSH CX
+	MOV DX, TIME 						;loads a delay in dx
+	P1: MOV CX, 0FF00H					;loads cx with 0FF00h=65280
+										;counts
+	P2: DEC CX 							;delays by decrementing cx
+	JNZ P2 								;if cx!=0 continue
+	DEC DX 								;if cx=0 decrements dx
+	JNZ P1 								;if dx!=0 loads again cx
+	POP CX 								;if dx=0 remake cx and dx
+	POP DX 
+ENDM 
+
+
+
+PRINT_NUM MACRO number
+;*****************************************************************
+;converts {number} into its corresponding ascii value then prints it out                          
+;*****************************************************************
+	MOV AH,02H
+	MOV DL,number
+	ADD DL,48
+	INT 21H
+ENDM
+
+ 
+ 
+ 
+
+CALCULATE_TIME MACRO 
+LOCAL END1,END2
+;*****************************************************************
+;calculates the time spent from the game start                         
+;*****************************************************************
+	mov SI,0
+	mov cx,6
+	INC TIME[SI]
+	END1:
+	CMP TIME[SI],0Ah					;if this digit is 10, reduce it immeaditely to 0 and the same time
+		JNE END2						;increment the next digit
+		MOV TIME[SI],0	
+		INC TIME[SI+1]
+		END2:
+		INC SI
+	loop END1
+ENDM  
+
+
+
+
+
+CALCULATE_SCORE MACRO
+local loop1,loop2
+;*****************************************************************
+;calculates the score based on the time  
+;score=999 999 - time(bigger time -> smaller score)                     
+;*****************************************************************
+	mov cx,6
+	mov SI,0
+	loop1:
+	mov al,TIME[SI]
+	sub SCORE[SI],al
+	ADD SCORE[SI],48				;convert to its corresponding ascii digit
+	INC SI
+	loop loop1
+
+	MOV SI,5 						;insert the score into our string(mess4)
+	MOV BP,6
+	mov cx,6											
+	loop2:
+	mov al,SCORE[SI]
+	mov mess4[BP],al
+	INC BP
+	DEC SI
+	loop loop2
+ENDM
+
+CALCULATE_HIGHSCORE MACRO
+LOCAL loop1,loop2,loop3,loop4,loop5
+;*****************************************************************
+;calculates the new highscore and stores it                   
+;*****************************************************************
+	mov CX,6
+	MOV SI,5
+	loop1:
+		mov al,SCORE[SI]
+		CMP al,HIGHSCORE[SI]
+		JL loop4									;if highscore is larger than score -> jump out the of the loop
+		CMP al,HIGHSCORE[SI]
+		JE loop2									;if the currently checked digits are equal, then check the next ones
+													;program flow comes here only if SCORE>HIGHSCORE
+		
+		mov cx,6									;we have a new highscore
+		mov SI,0
+		loop3:										;HIGHSCORE:=SCORE
+		mov al,SCORE[SI]
+		mov HIGHSCORE[SI],al
+		INC SI
+		loop loop3
+		JMP loop4	
+		
+		loop2:										;CHECK NEXT DIGIT(digits are in reverse order)
+		DEC SI
+	loop loop1
+
+	
+	
+	loop4:
+	MOV SI,5 											;insert the highscore into our string(mess5)
+	MOV BP,10
+	mov cx,6											
+	loop5:
+	mov al,HIGHSCORE[SI]
+	mov mess5[BP],al
+	INC BP
+	DEC SI
+	loop loop5
+ENDM
+
+
+
+WAIT_USER MACRO
+LOCAL next0,next1,next2
+;*****************************************************************
+;wait for the user to press 'n' or 'y'                  
+;*****************************************************************
+	next0:
+	mov ah,08h
+	int 21h
+	cmp al,110									;n - leave game
+	JNE next1
+	JMP GAME_LEAVE
+	next1:
+	cmp al,121									;y - restart game	
+	JNE next0
+	JMP START_GAME									
+ENDM
+
+
+initialise_start_game MACRO
+LOCAL loop1
+;*****************************************************************
+;initialisation of TIME(->0) and SCORE(->0)                
+;*****************************************************************
+
+	mov SI,0									;initialise score and time
+	mov CX,6
+	loop1:
+	MOV TIME[SI],0
+	MOV SCORE[SI],9
+	INC SI
+	loop loop1
+ENDM
+
+initialise_data MACRO a,level_width_a,level_width_dw_a,level_height_a,level_height_dw_a,player_x_a,player_y_a
+LOCAL loop1
+;*****************************************************************
+;initialisation of the base matrix and its dimensions before entering a new level              
+;*****************************************************************
+	swap_value_8 level_width_a,level_width_base
+	swap_value_8 player_x_a,player_x_base
+	swap_value_8 player_y_a,player_y_base
+	swap_value_8 level_height_a,level_height_base
+	swap_value_16 level_width_dw_a,level_width_dw_base
+	swap_value_16 level_height_dw_a,level_height_dw_base
+	
+	
+									;initialise matrixes
+	mov al,level_height_a							
+	MUL level_width_a
+	mov cx, ax
+	MOV SI,0
+	loop1:
+	MOV al,a[SI]
+	MOV base[SI],al
+	INC SI
+	loop loop1
+ENDM
+
+
+swap_value_8 MACRO value,value2
+;*****************************************************************
+;value2:=value    
+;8 bits         
+;*****************************************************************
+	mov al,value
+	mov value2,al
+ENDM
+
+swap_value_16 MACRO value,value2
+;*****************************************************************
+;value2:=value  
+;16 bits          
+;*****************************************************************
+	mov ax,value
+	mov value2,ax
+ENDM
+
+
+PRINT_BASE MACRO
+;*****************************************************************
+;printing the current maze,moving the player, clearing the screen             
+;*****************************************************************
+		PRINT_GAME base,level_width_base,level_height_base
+		MOVE_PLAYER base,level_width_dw_base,level_width_base,level_height_dw_base,player_x_base,player_y_base
+		CLEAR_SCREEN
+ENDM
