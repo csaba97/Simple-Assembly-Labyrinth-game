@@ -6,7 +6,7 @@ The game: the game starts by asking the user to press ENTER. Until the user pres
 
 ### How to run the code:  
 1. Install `DosBox + Tasm Compiler`
-2. type `tasm` as in the compiler
+2. type `tasm as` in the compiler
 3. type `tlink as`
 4. type `as`
 5. you are ready to go  
